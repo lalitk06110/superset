@@ -254,16 +254,22 @@ const PropertiesModal = ({
   };
 
   const handleOnChangeOwners = (
-    owners: { value: number; label: string }[],
+    selectedOwners: { value: number; label: string }[],
     options: Record<string, unknown>[],
   ) => {
-    const parsedOwners: Owners = ensureIsArray(owners).map((o, i) => ({
-      id: o.value,
-      full_name:
-        (options?.[i]?.[OWNER_TEXT_LABEL_PROP] as string) ||
-        (typeof o.label === 'string' ? o.label : ''),
-      email: (options?.[i]?.[OWNER_EMAIL_PROP] as string) || '',
-    }));
+    const parsedOwners: Owners = ensureIsArray(selectedOwners).map((o, i) => {
+      const existingOwner = owners.find(ow => ow.id === o.value);
+      if (existingOwner) {
+        return existingOwner;
+      }
+      return {
+        id: o.value,
+        full_name:
+          (options?.[i]?.[OWNER_TEXT_LABEL_PROP] as string) ||
+          (typeof o.label === 'string' ? o.label : ''),
+        email: (options?.[i]?.[OWNER_EMAIL_PROP] as string) || '',
+      };
+    });
     setOwners(parsedOwners);
   };
 
