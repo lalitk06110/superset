@@ -326,10 +326,6 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number,
-                body: `Devin has opened a pull request for this issue.
-
-                PR: ${pr.html_url}
-
-                Status changed from \`devin-running\` to \`devin-pr-opened\`.`
+                body: `Devin has opened a pull request for this issue.\n\nPR: ${pr.html_url}\n\nStatus changed from \`devin-running\` to \`devin-pr-opened\`.`
               });
             }
