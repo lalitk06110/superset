@@ -217,6 +217,46 @@ describe('dashboardState actions', () => {
       });
     });
 
+    test('should not clear certified_by when it is undefined in save data', async () => {
+      mockIsFeatureEnabled.mockReturnValue(false);
+      const { getState, dispatch } = setup();
+      const dataWithoutCertification = {
+        ...newDashboardData,
+        certified_by: undefined,
+        certification_details: undefined,
+      };
+      const thunk = saveDashboardRequest(
+        dataWithoutCertification,
+        1,
+        SAVE_TYPE_OVERWRITE,
+      );
+      await thunk(dispatch, getState);
+      await waitFor(() => expect(putStub.mock.calls.length).toBe(1));
+      const putBody = JSON.parse(putStub.mock.calls[0][0].body);
+      expect(putBody).not.toHaveProperty('certified_by');
+      expect(putBody).not.toHaveProperty('certification_details');
+    });
+
+    test('should preserve certified_by when it is provided in save data', async () => {
+      mockIsFeatureEnabled.mockReturnValue(false);
+      const { getState, dispatch } = setup();
+      const dataWithCertification = {
+        ...newDashboardData,
+        certified_by: 'John Doe',
+        certification_details: 'Approved by data team',
+      };
+      const thunk = saveDashboardRequest(
+        dataWithCertification,
+        1,
+        SAVE_TYPE_OVERWRITE,
+      );
+      await thunk(dispatch, getState);
+      await waitFor(() => expect(putStub.mock.calls.length).toBe(1));
+      const putBody = JSON.parse(putStub.mock.calls[0][0].body);
+      expect(putBody.certified_by).toBe('John Doe');
+      expect(putBody.certification_details).toBe('Approved by data team');
+    });
+
     test('should navigate to the new dashboard after Save As', async () => {
       const newDashboardId = 999;
       const { getState, dispatch } = setup({
