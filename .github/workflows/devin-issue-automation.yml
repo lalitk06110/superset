@@ -1,0 +1,333 @@
+name: Devin Issue Automation
+
+on:
+  issues:
+    types: [labeled, closed, reopened]
+  pull_request:
+    types: [opened, reopened]
+
+permissions:
+  issues: write
+  contents: read
+  pull-requests: read
+
+jobs:
+  start-devin:
+    if: github.event.action == 'labeled' && github.event.label.name == 'devin'
+    runs-on: ubuntu-latest
+
+    env:
+      DEVIN_API_KEY: ${{ secrets.DEVIN_API_KEY }}
+      DEVIN_ORG_ID: ${{ vars.DEVIN_ORG_ID }}
+      ISSUE_TITLE: ${{ github.event.issue.title }}
+      ISSUE_URL: ${{ github.event.issue.html_url }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      REPO: ${{ github.repository }}
+
+    steps:
+      - name: Validate config
+        run: |
+          test -n "$DEVIN_API_KEY" || (echo "Missing secret DEVIN_API_KEY" && exit 1)
+          test -n "$DEVIN_ORG_ID" || (echo "Missing var DEVIN_ORG_ID" && exit 1)
+
+      - name: Check issue eligibility
+        id: eligibility
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const labels = issue.labels.map(label => label.name);
+
+            const isBlocked = labels.includes('devin-blocked') || labels.includes('blocked');
+            const isAlreadyRunning = labels.includes('devin-running');
+            const hasPrOpen = labels.includes('devin-pr-opened');
+            const isResolved = labels.includes('devin-resolved');
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              per_page: 100
+            });
+
+            const hasExistingSession = comments.some(comment =>
+              comment.body.includes('### Devin Automation Started')
+            );
+
+            if (isBlocked) {
+              core.setOutput('should_start', 'false');
+              core.setOutput('reason', 'Issue is blocked.');
+              return;
+            }
+
+            if (isAlreadyRunning || hasExistingSession) {
+              core.setOutput('should_start', 'false');
+              core.setOutput('reason', 'Devin session already exists or issue is already running.');
+              return;
+            }
+
+            if (isResolved) {
+              core.setOutput('should_start', 'false');
+              core.setOutput('reason', 'Issue is already resolved.');
+              return;
+            }
+
+            if (hasPrOpen) {
+              core.setOutput('should_start', 'false');
+              core.setOutput('reason', 'A Devin PR is already open for this issue.');
+              return;
+            }
+
+            core.setOutput('should_start', 'true');
+            core.setOutput('reason', 'Issue is eligible for Devin.');
+
+      - name: Comment if skipped
+        if: steps.eligibility.outputs.should_start != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `Devin automation skipped.\n\nReason: ${{ steps.eligibility.outputs.reason }}`
+            });
+
+      - name: Mark issue as running
+        if: steps.eligibility.outputs.should_start == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['devin-running', 'automation']
+            });
+
+      - name: Start Devin session
+        if: steps.eligibility.outputs.should_start == 'true'
+        id: devin
+        run: |
+          PROMPT=$(cat <<EOF
+          Work on GitHub issue #${ISSUE_NUMBER} in ${REPO}: ${ISSUE_TITLE}
+
+          Issue: ${ISSUE_URL}
+
+          Scope:
+          - Keep the change narrow and focused on this issue.
+          - Follow existing Superset repo patterns.
+          - Add or update tests where needed.
+          - Open a PR when complete.
+
+          Do not work on unrelated issues.
+          EOF
+          )
+
+          PAYLOAD=$(jq -n \
+            --arg prompt "$PROMPT" \
+            --arg title "Issue #${ISSUE_NUMBER}: ${ISSUE_TITLE}" \
+            --arg issue_url "$ISSUE_URL" \
+            '{
+              prompt: $prompt,
+              title: $title,
+              session_links: [$issue_url],
+              tags: ["github-issue", "superset", "automation"]
+            }'
+          )
+
+          RESPONSE=$(curl -sS -X POST "https://api.devin.ai/v3/organizations/${DEVIN_ORG_ID}/sessions" \
+            -H "Authorization: Bearer ${DEVIN_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD")
+
+          echo "$RESPONSE" | jq .
+
+          SESSION_URL=$(echo "$RESPONSE" | jq -r '.url // empty')
+          SESSION_ID=$(echo "$RESPONSE" | jq -r '.session_id // empty')
+
+          test -n "$SESSION_URL" || (echo "Devin session creation failed" && exit 1)
+
+          echo "session_url=$SESSION_URL" >> "$GITHUB_OUTPUT"
+          echo "session_id=$SESSION_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Write session details to job summary
+        if: steps.eligibility.outputs.should_start == 'true'
+        run: |
+          echo "## Devin Session Started" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Issue | ${ISSUE_URL} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Session | ${{ steps.devin.outputs.session_url }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Session ID | \`${{ steps.devin.outputs.session_id }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Status | devin-running |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment on issue
+        if: steps.eligibility.outputs.should_start == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = `### Devin Automation Started
+
+            - Status: \`devin-running\`
+            - Devin session: ${{ steps.devin.outputs.session_url }}
+            - Session ID: \`${{ steps.devin.outputs.session_id }}\`
+            - Trigger: \`devin\` label added
+            - Workflow run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}
+
+            Expected output:
+            - Devin works on this issue.
+            - Devin opens a pull request when complete.
+            - Maintainers review the PR and close this issue after merge.`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
+
+      - name: Mark Devin start failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['devin-failed']
+            });
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `Devin automation failed while starting the session.
+
+              Workflow run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            });
+
+  issue-status:
+    if: github.event.action == 'closed' || github.event.action == 'reopened'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Update Devin labels on issue close or reopen
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+
+            if (context.payload.action === 'closed') {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                name: 'devin-running'
+              }).catch(() => {});
+
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: ['devin-resolved']
+              });
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `Issue marked as resolved for Devin automation tracking.
+
+                If this issue was blocking other Devin issues, remove their \`devin-blocked\` label after verifying dependencies.`
+              });
+            }
+
+            if (context.payload.action === 'reopened') {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                name: 'devin-resolved'
+              }).catch(() => {});
+
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: ['devin']
+              });
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `Issue reopened. Devin label restored so automation can be retriggered.`
+              });
+            }
+
+  mark-pr-opened:
+    if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'reopened')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Mark linked issue as PR opened
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const text = `${pr.title}\n${pr.body || ''}`;
+
+            const matches = [
+              ...text.matchAll(/(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/gi),
+              ...text.matchAll(/#(\d+)/g)
+            ];
+
+            const issueNumbers = [...new Set(matches.map(match => Number(match[1])))];
+
+            if (issueNumbers.length === 0) {
+              core.info('No linked issue found in PR title/body.');
+              return;
+            }
+
+            for (const issue_number of issueNumbers) {
+              const issue = await github.rest.issues.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number
+              });
+
+              const labels = issue.data.labels.map(label => label.name);
+
+              if (!labels.includes('devin') && !labels.includes('devin-running')) {
+                core.info(`Issue #${issue_number} does not look like a Devin issue. Skipping.`);
+                continue;
+              }
+
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number,
+                name: 'devin-running'
+              }).catch(() => {});
+
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number,
+                labels: ['devin-pr-opened']
+              });
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number,
+                body: `Devin has opened a pull request for this issue.
+
+                PR: ${pr.html_url}
+
+                Status changed from \`devin-running\` to \`devin-pr-opened\`.`
+              });
+            }

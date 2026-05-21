@@ -48,6 +48,8 @@ under the License.
 
 A modern, enterprise-ready business intelligence web application.
 
+> Setting up Devin issue automation on a fork? See [DEVIN_README.md](DEVIN_README.md).
+
 ### Documentation
 
 - **[User Guide](https://superset.apache.org/user-docs/)** — For analysts and business users. Explore data, build charts, create dashboards, and connect databases.
