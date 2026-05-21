@@ -590,6 +590,8 @@ class SupersetSecurityManager(  # pylint: disable=too-many-public-methods
         # Embedded dashboard support
         ("can_read", "EmbeddedDashboard"),
         ("can_read", "CurrentUserRestApi"),
+        # Event logging (embedded dashboards need this to avoid 403)
+        ("can_log", "Superset"),
         # Datasource metadata for chart rendering
         ("can_get", "Datasource"),
         ("can_external_metadata", "Datasource"),
