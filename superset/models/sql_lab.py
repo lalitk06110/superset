@@ -190,7 +190,9 @@ class Query(
     database = relationship(
         "Database",
         foreign_keys=[database_id],
-        backref=backref("queries", cascade="all, delete-orphan"),
+        backref=backref(
+            "queries", cascade="all, delete-orphan", cascade_backrefs=False
+        ),
     )
     user = relationship(security_manager.user_model, foreign_keys=[user_id])
 
@@ -472,13 +474,17 @@ class SavedQuery(
     template_parameters = Column(Text)
     user = relationship(
         security_manager.user_model,
-        backref=backref("saved_queries", cascade="all, delete-orphan"),
+        backref=backref(
+            "saved_queries", cascade="all, delete-orphan", cascade_backrefs=False
+        ),
         foreign_keys=[user_id],
     )
     database = relationship(
         "Database",
         foreign_keys=[db_id],
-        backref=backref("saved_queries", cascade="all, delete-orphan"),
+        backref=backref(
+            "saved_queries", cascade="all, delete-orphan", cascade_backrefs=False
+        ),
     )
     rows = Column(Integer, nullable=True)
     last_run = Column(DateTime, nullable=True)
