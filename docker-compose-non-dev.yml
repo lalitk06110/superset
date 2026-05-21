@@ -137,6 +137,27 @@ services:
     healthcheck:
       disable: true
 
+  superset-mcp:
+    build:
+      <<: *common-build
+    container_name: superset_mcp
+    command: ["/app/docker/docker-bootstrap.sh", "mcp"]
+    env_file:
+      - path: docker/.env # default
+        required: true
+      - path: docker/.env-local # optional override
+        required: false
+    restart: unless-stopped
+    ports:
+      - 5008:5008
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+    user: "root"
+    volumes: *superset-volumes
+    profiles:
+      - mcp
+
 volumes:
   superset_home:
     external: false

@@ -229,9 +229,11 @@ COPY superset-core superset-core
 
 RUN --mount=type=cache,target=${SUPERSET_HOME}/.cache/uv \
     /app/docker/pip-install.sh --requires-build-essential -r requirements/base.txt
-# Install the superset package
+# Install the superset package with MCP (Model Context Protocol) support.
+# The [fastmcp] extra provides the `superset mcp run` CLI command and the
+# streamable-http transport used by MCP clients (Claude, etc.).
 RUN --mount=type=cache,target=${SUPERSET_HOME}/.cache/uv \
-    uv pip install -e .
+    uv pip install -e ".[fastmcp]"
 RUN python -m compileall /app/superset
 
 USER superset
