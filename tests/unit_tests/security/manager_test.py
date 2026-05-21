@@ -1547,3 +1547,30 @@ def test_validate_child_in_parent_multilayer_null_params(
     assert not sm._validate_child_in_parent_multilayer(
         child_slice_id=1, parent_slice=parent_slice
     )
+
+
+def test_public_role_permissions_include_event_logging(app_context: None) -> None:
+    """
+    Test that PUBLIC_ROLE_PERMISSIONS includes can_log on Superset.
+
+    Embedded dashboards use the Public/guest role and the frontend event logger
+    POSTs to /superset/log/. Without this permission, guest users receive a 403
+    Forbidden error which breaks the embedded dashboard experience.
+    """
+    assert ("can_log", "Superset") in SupersetSecurityManager.PUBLIC_ROLE_PERMISSIONS
+
+
+def test_public_role_permissions_include_embedded_support(app_context: None) -> None:
+    """
+    Test that PUBLIC_ROLE_PERMISSIONS includes all permissions required for
+    embedded dashboard functionality.
+    """
+    required = {
+        ("can_read", "EmbeddedDashboard"),
+        ("can_read", "CurrentUserRestApi"),
+        ("can_log", "Superset"),
+        ("can_read", "Dashboard"),
+        ("can_read", "Chart"),
+        ("can_explore_json", "Superset"),
+    }
+    assert required.issubset(SupersetSecurityManager.PUBLIC_ROLE_PERMISSIONS)
