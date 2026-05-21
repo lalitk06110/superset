@@ -495,6 +495,7 @@ class BaseEngineSpec:  # pylint: disable=too-many-public-methods
     allows_subqueries = True
     allows_alias_in_select = True
     allows_alias_in_orderby = True
+    allows_alias_in_groupby = False
     allows_sql_comments = True
     allows_escaped_colons = True
 

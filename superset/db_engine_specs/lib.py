@@ -42,6 +42,7 @@ DATABASE_DETAILS = {
     "subqueries": "Supports subqueries",
     "alias_in_select": "Allows aliases in the SELECT statement",
     "alias_in_orderby": "Allows referencing aliases in the ORDER BY statement",
+    "alias_in_groupby": ("Allows referencing aliases in the GROUP BY clause"),
     "time_groupby_inline": (
         "Allows omitting time filters from inline GROUP BYs"
     ),  # E: line too long (80 > 79 characters)
@@ -128,6 +129,7 @@ def diagnose(spec: type[BaseEngineSpec]) -> dict[str, Any]:
             "subqueries": spec.allows_subqueries,
             "alias_in_select": spec.allows_alias_in_select,
             "alias_in_orderby": spec.allows_alias_in_orderby,
+            "alias_in_groupby": spec.allows_alias_in_groupby,
             "time_groupby_inline": spec.time_groupby_inline,
             "alias_to_source_column": not spec.allows_alias_to_source_column,
             "order_by_not_in_select": spec.allows_hidden_orderby_agg,
@@ -342,6 +344,7 @@ def generate_feature_tables() -> str:
         "cte_in_subquery",
     ]
     advanced_sql = [
+        "alias_in_groupby",
         "time_groupby_inline",
         "alias_to_source_column",
         "order_by_not_in_select",
@@ -440,6 +443,7 @@ def generate_feature_tables() -> str:
             "subqueries",
             "alias_in_select",
             "alias_in_orderby",
+            "alias_in_groupby",
             "cte_in_subquery",
             "sql_comments",
             "escaped_colons",
@@ -453,6 +457,7 @@ def generate_feature_tables() -> str:
             "Subqueries",
             "Aliases in SELECT",
             "Aliases in ORDER BY",
+            "Aliases in GROUP BY",
             "CTEs",
             "Comments",
             "Escaped Colons",
@@ -600,6 +605,7 @@ def generate_table() -> list[list[Any]]:
         "subqueries",
         "alias_in_select",
         "alias_in_orderby",
+        "alias_in_groupby",
         "time_groupby_inline",
         "alias_to_source_column",
         "order_by_not_in_select",

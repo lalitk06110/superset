@@ -682,6 +682,106 @@ def test_apply_series_others_grouping_no_label_in_groupby(database: Database) ->
         # because only SELECT gets make_sqla_column_compatible applied
 
 
+def test_get_groupby_exprs_with_alias_disabled(database: Database) -> None:
+    """
+    Test that _get_groupby_exprs returns original expressions when
+    allows_alias_in_groupby is False (default behavior).
+    """
+    import sqlalchemy as sa
+
+    from superset.connectors.sqla.models import SqlaTable, TableColumn
+
+    table = SqlaTable(
+        database=database,
+        schema=None,
+        table_name="test_table",
+        columns=[TableColumn(column_name="date", type="DATETIME")],
+    )
+
+    expr = sa.literal_column("dateTrunc('DAY', toDateTime(date))").label("date")
+    plain_col = sa.column("status")
+
+    result_dict = table._get_groupby_exprs({"date": expr, "status": plain_col})
+    assert len(result_dict) == 2
+    assert result_dict[0] is expr
+    assert result_dict[1] is plain_col
+
+    result_list = table._get_groupby_exprs([expr, plain_col])
+    assert len(result_list) == 2
+    assert result_list[0] is expr
+    assert result_list[1] is plain_col
+
+
+def test_get_groupby_exprs_with_alias_enabled(database: Database) -> None:
+    """
+    Test that _get_groupby_exprs replaces Label expressions with column
+    references when allows_alias_in_groupby is True.
+
+    This is the fix for ClickHouse error 215: when using virtual tables,
+    GROUP BY must reference SELECT aliases instead of repeating the full
+    expression.
+    """
+    import sqlalchemy as sa
+    from sqlalchemy.sql.expression import Label
+
+    from superset.connectors.sqla.models import SqlaTable, TableColumn
+
+    table = SqlaTable(
+        database=database,
+        schema=None,
+        table_name="test_table",
+        columns=[TableColumn(column_name="date", type="DATETIME")],
+    )
+
+    # Temporarily enable alias in groupby
+    original_value = table.db_engine_spec.allows_alias_in_groupby
+    table.db_engine_spec.allows_alias_in_groupby = True
+    try:
+        expr = sa.literal_column("dateTrunc('DAY', toDateTime(date))").label("date")
+        plain_col = sa.column("status")
+
+        result = table._get_groupby_exprs({"date": expr, "status": plain_col})
+        assert len(result) == 2
+
+        # Label should be replaced with a column reference
+        assert not isinstance(result[0], Label)
+        assert str(result[0]) == '"date"'
+
+        # Non-label should pass through unchanged
+        assert result[1] is plain_col
+
+        # Also test with list input
+        result_list = table._get_groupby_exprs([expr, plain_col])
+        assert len(result_list) == 2
+        assert not isinstance(result_list[0], Label)
+        assert str(result_list[0]) == '"date"'
+        assert result_list[1] is plain_col
+    finally:
+        table.db_engine_spec.allows_alias_in_groupby = original_value
+
+
+def test_clickhouse_allows_alias_in_groupby() -> None:
+    """
+    Test that ClickHouse engine specs have allows_alias_in_groupby = True.
+    """
+    from superset.db_engine_specs.clickhouse import (
+        ClickHouseBaseEngineSpec,
+        ClickHouseEngineSpec,
+    )
+
+    assert ClickHouseBaseEngineSpec.allows_alias_in_groupby is True
+    assert ClickHouseEngineSpec.allows_alias_in_groupby is True
+
+
+def test_base_engine_spec_disallows_alias_in_groupby() -> None:
+    """
+    Test that the base engine spec has allows_alias_in_groupby = False.
+    """
+    from superset.db_engine_specs.base import BaseEngineSpec
+
+    assert BaseEngineSpec.allows_alias_in_groupby is False
+
+
 def test_process_orderby_expression_basic(
     mocker: MockerFixture,
     database: Database,
