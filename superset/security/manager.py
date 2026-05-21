@@ -101,6 +101,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Disable cascade_backrefs on FAB's Role.user relationship to suppress the
+# SQLAlchemy 2.0 deprecation warning (cascade along backref paths will no
+# longer take place in SQLAlchemy 2.0).  In SA 2.0+ the parameter was
+# removed (always False), so we guard with hasattr.
+if hasattr(Role.user.property, "cascade_backrefs"):
+    Role.user.property.cascade_backrefs = False
+
 
 def get_conf() -> Any:
     return current_app.config
