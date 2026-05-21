@@ -221,12 +221,14 @@ jobs:
             const issue = context.payload.issue;
 
             if (context.payload.action === 'closed') {
-              await github.rest.issues.removeLabel({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issue.number,
-                name: 'devin-running'
-              }).catch(() => {});
+              for (const label of ['devin-running', 'devin', 'devin-pr-opened']) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  name: label
+                }).catch(() => {});
+              }
 
               await github.rest.issues.addLabels({
                 owner: context.repo.owner,
