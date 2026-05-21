@@ -55,6 +55,7 @@ class ClickHouseBaseEngineSpec(BaseEngineSpec):
 
     time_groupby_inline = True
     supports_multivalues_insert = True
+    allows_alias_in_groupby = True
 
     _time_grain_expressions = {
         None: "{col}",

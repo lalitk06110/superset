@@ -58,7 +58,13 @@ from sqlalchemy import and_, Column, or_, UniqueConstraint
 from sqlalchemy.exc import MultipleResultsFound
 from sqlalchemy.ext.declarative import declared_attr
 from sqlalchemy.orm import Mapper, validates
-from sqlalchemy.sql.elements import ColumnElement, Grouping, literal_column, TextClause
+from sqlalchemy.sql.elements import (
+    ColumnElement,
+    Grouping,
+    literal_column,
+    quoted_name,
+    TextClause,
+)
 from sqlalchemy.sql.expression import Label, Select, TextAsFrom
 from sqlalchemy.sql.selectable import Alias, TableClause
 from sqlalchemy_utils import UUIDType
@@ -1022,6 +1028,34 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
             sqla_col = sqla_col.label(label)
         sqla_col.key = label_expected
         return sqla_col
+
+    def _get_groupby_exprs(
+        self, groupby_columns: dict[str, Any] | list[Any]
+    ) -> list[Any]:
+        """Get GROUP BY expressions, using column aliases when supported.
+
+        Some databases (e.g. ClickHouse) require GROUP BY to reference
+        SELECT aliases instead of repeating the full expression.  When
+        querying virtual tables (subqueries) the repeated expression may
+        reference columns that are only visible inside the subquery,
+        causing errors like ClickHouse error 215.
+
+        :param groupby_columns: dict or list of GROUP BY expressions
+        :return: list of expressions suitable for ``group_by()``
+        """
+        values: Any = (
+            groupby_columns.values()
+            if isinstance(groupby_columns, dict)
+            else groupby_columns
+        )
+        if self.db_engine_spec.allows_alias_in_groupby:
+            return [
+                sa.column(quoted_name(expr.name, True))
+                if isinstance(expr, Label)
+                else expr
+                for expr in values
+            ]
+        return list(values)
 
     @staticmethod
     def _apply_cte(sql: str, cte: Optional[str]) -> str:
@@ -3004,7 +3038,7 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
         qry = sa.select(select_exprs)
 
         if groupby_all_columns:
-            qry = qry.group_by(*groupby_all_columns.values())
+            qry = qry.group_by(*self._get_groupby_exprs(groupby_all_columns))
 
         where_clause_and: list[ColumnElement] = []
         having_clause_and: list[ColumnElement] = []
@@ -3354,7 +3388,7 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
                     if _inner_filter is not None:
                         inner_time_filter = [_inner_filter]
                 subq = subq.where(and_(*(where_clause_and + inner_time_filter)))
-                subq = subq.group_by(*inner_groupby_exprs)
+                subq = subq.group_by(*self._get_groupby_exprs(inner_groupby_exprs))
 
                 ob = inner_main_metric_expr
                 if series_limit_metric:
@@ -3408,7 +3442,9 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
                     # Reconstruct query with modified expressions
                     qry = sa.select(select_exprs)
                     if groupby_all_columns:
-                        qry = qry.group_by(*groupby_all_columns.values())
+                        qry = qry.group_by(
+                            *self._get_groupby_exprs(groupby_all_columns)
+                        )
 
                     # Re-apply WHERE and HAVING clauses lost during query reconstruction
                     qry = self._reapply_query_filters(
@@ -3482,7 +3518,9 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
                     # Reconstruct query with modified expressions
                     qry = sa.select(select_exprs)
                     if groupby_all_columns:
-                        qry = qry.group_by(*groupby_all_columns.values())
+                        qry = qry.group_by(
+                            *self._get_groupby_exprs(groupby_all_columns)
+                        )
 
                     # Re-apply WHERE and HAVING clauses lost during query reconstruction
                     qry = self._reapply_query_filters(
