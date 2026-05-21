@@ -97,7 +97,10 @@ class Tag(CoreTag, AuditMixinNullable):
     description = Column(Text)
 
     objects = relationship(
-        "TaggedObject", back_populates="tag", overlaps="objects,tags"
+        "TaggedObject",
+        back_populates="tag",
+        cascade_backrefs=False,
+        overlaps="objects,tags",
     )
 
     users_favorited = relationship(

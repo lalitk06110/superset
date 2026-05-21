@@ -1232,12 +1232,14 @@ class SqlaTable(
         TableColumn,
         back_populates="table",
         cascade="all, delete-orphan",
+        cascade_backrefs=False,
         passive_deletes=True,
     )
     metrics: Mapped[list[SqlMetric]] = relationship(
         SqlMetric,
         back_populates="table",
         cascade="all, delete-orphan",
+        cascade_backrefs=False,
         passive_deletes=True,
     )
     metric_class = SqlMetric
@@ -1265,7 +1267,7 @@ class SqlaTable(
     owners = relationship(owner_class, secondary=sqlatable_user, backref="tables")
     database: Database = relationship(
         "Database",
-        backref=backref("tables", cascade="all, delete-orphan"),
+        backref=backref("tables", cascade="all, delete-orphan", cascade_backrefs=False),
         foreign_keys=[database_id],
     )
     schema = Column(String(255))
